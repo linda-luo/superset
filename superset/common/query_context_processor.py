@@ -338,7 +338,7 @@ class QueryContextProcessor:
             if hasattr(query, "post_processing") and query.post_processing:
                 for pp in query.post_processing:
                     if pp.get("operation") == "contribution":
-                        pp["options"]["contribution_totals"] = totals
+                        pp.setdefault("options", {})["contribution_totals"] = totals
 
     def get_payload(
         self,
