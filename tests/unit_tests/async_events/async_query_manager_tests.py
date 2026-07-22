@@ -26,6 +26,7 @@ from superset import security_manager
 from superset.async_events.async_query_manager import (
     AsyncQueryManager,
     AsyncQueryTokenException,
+    increment_id,
 )
 from superset.async_events.cache_backend import (
     RedisCacheBackend,
@@ -326,6 +327,34 @@ def test_validate_session_guest_user_creates_valid_token(async_query_manager):
         mock_request.cookies = {JWT_TOKEN_COOKIE_NAME: token}
         channel = async_query_manager.parse_channel_id_from_request(mock_request)
         assert channel  # valid UUID string
+
+
+@mark.parametrize(
+    "entry_id, expected",
+    [
+        ("1607477697866-0", "1607477697866-1"),
+        ("1607477697866-8", "1607477697866-9"),
+        # Regression: sequences ending in 9 must roll over the whole integer,
+        # not just the last digit (previously '...-9' -> '...-10' was computed
+        # as '...-' + '10' but multi-digit cases like '...-19' broke).
+        ("1607477697866-9", "1607477697866-10"),
+        ("1607477697866-19", "1607477697866-20"),
+        ("1607477697866-109", "1607477697866-110"),
+        ("1607477697866-99", "1607477697866-100"),
+    ],
+)
+def test_increment_id(entry_id, expected):
+    assert increment_id(entry_id) == expected
+
+
+@mark.parametrize(
+    "entry_id",
+    ["", "not-a-stream-id", "1607477697866", "1607477697866-", "-0", "abc-1"],
+)
+def test_increment_id_malformed_raises(entry_id):
+    """Malformed IDs must fail loudly instead of being silently returned."""
+    with raises(ValueError, match="Malformed Redis stream ID"):
+        increment_id(entry_id)
 
 
 @mark.parametrize(
