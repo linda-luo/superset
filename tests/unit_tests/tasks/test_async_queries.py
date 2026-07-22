@@ -346,14 +346,15 @@ def test_load_explore_json_into_cache_preserves_superset_viz_exception(
 @mock.patch("superset.tasks.async_queries.async_query_manager")
 @mock.patch("superset.tasks.async_queries.get_viz")
 @mock.patch("superset.tasks.async_queries.get_datasource_info")
-def test_load_explore_json_into_cache_falls_back_to_string_for_generic_exception(
+def test_load_explore_json_into_cache_wraps_generic_exception_as_dict(
     mock_get_datasource_info,
     mock_get_viz,
     mock_async_query_manager,
     mock_security_manager,
 ):
     """
-    Test that Non-Superset exception are passed as plain-string error.
+    Non-Superset exceptions must be wrapped as SIP-40 style ``{"message": ...}``
+    dicts, matching the chart-data path, so the frontend can render the error.
     """
     from superset.tasks.async_queries import load_explore_json_into_cache
 
@@ -372,4 +373,4 @@ def test_load_explore_json_into_cache_falls_back_to_string_for_generic_exception
         load_explore_json_into_cache(job_metadata, form_data)
 
     errors = mock_async_query_manager.update_job.call_args[1]["errors"]
-    assert errors == ["boom"]
+    assert errors == [{"message": "boom"}]

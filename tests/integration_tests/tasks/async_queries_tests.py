@@ -232,7 +232,9 @@ class TestAsyncQueries(SupersetTestCase):
             load_explore_json_into_cache(job_metadata, form_data)
 
         mock_set_form_data.assert_called_once_with(form_data)
-        errors = ["The dataset associated with this chart no longer exists"]
+        errors = [
+            {"message": "The dataset associated with this chart no longer exists"}
+        ]
         mock_update_job.assert_called_once_with(job_metadata, "error", errors=errors)
 
     @parameterized.expand(
