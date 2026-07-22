@@ -50,6 +50,14 @@ class TestSupersetResultSet(SupersetTestCase):
             "bar__2",
             "Bar__3",
         ]
+        # generated suffix must not collide with a pre-existing literal name
+        assert dedup(["bar", "bar", "bar__1"]) == ["bar", "bar__1", "bar__1__1"]
+        assert dedup(["bar", "bar__1", "bar"]) == ["bar", "bar__1", "bar__2"]
+        assert dedup(["Bar__1", "bar", "bar"], case_sensitive=False) == [
+            "Bar__1",
+            "bar",
+            "bar__2",
+        ]
 
     def test_get_columns_basic(self):
         data = [("a1", "b1", "c1"), ("a2", "b2", "c2")]
