@@ -258,7 +258,7 @@ class WebDriverPlaywright(WebDriverProxy):
                     # Even if some errors can't be updated in the screenshot,
                     # keep all the errors in the server log and do not fail the loop
                     alert_div.evaluate(
-                        "(node, error_html) => node.innerHtml = error_html",
+                        "(node, error_html) => node.innerHTML = error_html",
                         [error_as_html],
                     )
                 except PlaywrightError:

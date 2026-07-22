@@ -661,6 +661,12 @@ class TestWebDriverPlaywrightErrorHandling:
         assert result == ["Error message"]
         mock_button.click.assert_called_once()
         mock_close_button.click.assert_called_once()
+        # The injected JS must assign the real DOM property `innerHTML`;
+        # a typo like `innerHtml` silently no-ops and leaves the raw error UI.
+        mock_alert_div.evaluate.assert_called_once()
+        injected_js = mock_alert_div.evaluate.call_args[0][0]
+        assert "node.innerHTML = error_html" in injected_js
+        assert "innerHtml" not in injected_js
 
     @patch("superset.utils.webdriver.PLAYWRIGHT_AVAILABLE", True)
     @patch("superset.utils.webdriver._browser_manager")
