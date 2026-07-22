@@ -414,6 +414,85 @@ def test_get_chart_dataframe_preserves_na_string_values(
     assert last_name_values[1] == "NA"
 
 
+def fake_get_chart_csv_data_missing_result(
+    chart_url: str,
+    auth_cookies: dict[str, str] | None = None,
+    timeout: float | None = None,
+) -> bytes | None:
+    """Return a payload whose ``result`` key is absent."""
+    return json.dumps({}).encode("utf-8")
+
+
+def fake_get_chart_csv_data_empty_result_list(
+    chart_url: str,
+    auth_cookies: dict[str, str] | None = None,
+    timeout: float | None = None,
+) -> bytes | None:
+    """Return a payload whose ``result`` list is empty."""
+    return json.dumps({"result": []}).encode("utf-8")
+
+
+def test_get_chart_dataframe_returns_none_when_result_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A payload without a ``result`` key must not raise, but return None."""
+    monkeypatch.setattr(
+        csv, "get_chart_csv_data", fake_get_chart_csv_data_missing_result
+    )
+    assert get_chart_dataframe("http://dummy-url") is None
+
+
+def test_get_chart_dataframe_returns_none_when_result_empty_list(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """An empty ``result`` list must not raise an IndexError, but return None."""
+    monkeypatch.setattr(
+        csv, "get_chart_csv_data", fake_get_chart_csv_data_empty_result_list
+    )
+    assert get_chart_dataframe("http://dummy-url") is None
+
+
+def test_get_chart_dataframe_propagates_control_flow_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """
+    Control-flow signals (SystemExit/KeyboardInterrupt) raised during temporal
+    coercion must propagate rather than being swallowed by the handler.
+    """
+    monkeypatch.setattr(csv, "get_chart_csv_data", fake_get_chart_csv_data_temporal)
+
+    original_astype = pd.Series.astype
+
+    def raising_astype(self: pd.Series, *args: Any, **kwargs: Any) -> pd.Series:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(pd.Series, "astype", raising_astype)
+    with pytest.raises(KeyboardInterrupt):
+        get_chart_dataframe("http://dummy-url")
+
+    monkeypatch.setattr(pd.Series, "astype", original_astype)
+
+
+def test_get_chart_dataframe_logs_and_continues_on_conversion_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """
+    A genuine conversion error (e.g. ValueError) is logged and the dataframe is
+    still returned with the untyped column, matching the documented behaviour.
+    """
+    monkeypatch.setattr(csv, "get_chart_csv_data", fake_get_chart_csv_data_temporal)
+
+    def raising_astype(self: pd.Series, *args: Any, **kwargs: Any) -> pd.Series:
+        raise ValueError("cannot convert")
+
+    monkeypatch.setattr(pd.Series, "astype", raising_astype)
+    with mock.patch.object(csv.logger, "error") as mock_error:
+        df = get_chart_dataframe("http://dummy-url")
+
+    assert df is not None
+    mock_error.assert_called_once()
+
+
 def test_get_chart_csv_data_passes_timeout_to_opener(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

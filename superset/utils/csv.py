@@ -140,9 +140,13 @@ def get_chart_dataframe(
         return None
 
     result = json.loads(content.decode("utf-8"))
+    payload = result.get("result")
+    if not payload:
+        return None
+    first = payload[0]
     # need to convert float value to string to show full long number
     pd.set_option("display.float_format", lambda x: str(x))
-    df = pd.DataFrame.from_dict(result["result"][0]["data"])
+    df = pd.DataFrame.from_dict(first["data"])
 
     if df.empty:
         return None
@@ -150,22 +154,22 @@ def get_chart_dataframe(
     try:
         # if any column type is equal to 2, need to convert data into
         # datetime timestamp for that column.
-        if GenericDataType.TEMPORAL in result["result"][0]["coltypes"]:
-            for i in range(len(result["result"][0]["coltypes"])):
-                if result["result"][0]["coltypes"][i] == GenericDataType.TEMPORAL:
-                    df[result["result"][0]["colnames"][i]] = df[
-                        result["result"][0]["colnames"][i]
-                    ].astype("datetime64[ms]")
-    except BaseException as err:
+        if GenericDataType.TEMPORAL in first["coltypes"]:
+            for i in range(len(first["coltypes"])):
+                if first["coltypes"][i] == GenericDataType.TEMPORAL:
+                    df[first["colnames"][i]] = df[first["colnames"][i]].astype(
+                        "datetime64[ms]"
+                    )
+    except (KeyError, ValueError, TypeError) as err:
         logger.error(err)
 
     # rebuild hierarchical columns and index
     df.columns = pd.MultiIndex.from_tuples(
         tuple(colname) if isinstance(colname, list) else (colname,)
-        for colname in result["result"][0]["colnames"]
+        for colname in first["colnames"]
     )
     df.index = pd.MultiIndex.from_tuples(
         tuple(indexname) if isinstance(indexname, list) else (indexname,)
-        for indexname in result["result"][0]["indexnames"]
+        for indexname in first["indexnames"]
     )
     return df
