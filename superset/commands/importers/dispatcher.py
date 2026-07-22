@@ -16,6 +16,7 @@
 # under the License.
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from marshmallow.exceptions import ValidationError
@@ -36,7 +37,7 @@ class ImportDispatcherCommand(BaseCommand):
     of versioned import commands to try.
     """
 
-    command_versions: list[type[BaseCommand]] = []
+    command_versions: list[Callable[..., BaseCommand]] = []
 
     def __init__(self, contents: dict[str, str], *args: Any, **kwargs: Any):
         self.contents = contents
