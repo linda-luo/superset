@@ -76,12 +76,14 @@ def parse_event(event_data: tuple[str, dict[str, Any]]) -> dict[str, Any]:
 
 
 def increment_id(entry_id: str) -> str:
-    # redis stream IDs are in this format: '1607477697866-0'
-    try:
-        prefix, last = entry_id[:-1], int(entry_id[-1])
-        return prefix + str(last + 1)
-    except Exception:  # pylint: disable=broad-except
-        return entry_id
+    # redis stream IDs are in this format: '<ms>-<seq>', e.g. '1607477697866-0'.
+    # Increment the full sequence integer so the result stays a valid, ordered
+    # stream ID (e.g. '...-19' -> '...-20'), which is used as the inclusive
+    # XRANGE start in ``read_events``.
+    ms, sep, seq = entry_id.rpartition("-")
+    if not sep or not ms.isdigit() or not seq.isdigit():
+        raise ValueError(f"Malformed Redis stream ID: {entry_id!r}")
+    return f"{ms}-{int(seq) + 1}"
 
 
 def get_cache_backend(

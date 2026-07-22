@@ -197,8 +197,8 @@ def load_explore_json_into_cache(  # pylint: disable=too-many-locals
             elif isinstance(ex, SupersetErrorsException):
                 errors = [dataclasses.asdict(error) for error in ex.errors]  # type: ignore
             else:
-                error = ex.message if hasattr(ex, "message") else str(ex)
-                errors = [error]  # type: ignore
+                error = str(ex.message if hasattr(ex, "message") else ex)
+                errors = [{"message": error}]  # type: ignore
 
             async_query_manager.update_job(
                 job_metadata, async_query_manager.STATUS_ERROR, errors=errors

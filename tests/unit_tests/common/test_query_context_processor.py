@@ -1481,6 +1481,59 @@ def test_ensure_totals_available_updates_cache_values():
     )
 
 
+def test_ensure_totals_available_contribution_op_without_options():
+    """
+    Test that ensure_totals_available() does not raise KeyError when a
+    contribution post-processing operation omits the 'options' key.
+
+    Regression test: detection uses pp.get('operation') but the write previously
+    used pp['options'][...] directly, raising KeyError when 'options' was absent.
+    """
+    import pandas as pd
+
+    from superset.common.query_object import QueryObject
+
+    mock_datasource = MagicMock()
+    mock_datasource.uid = "test_datasource"
+    mock_datasource.database.db_engine_spec.engine = "postgresql"
+    mock_datasource.cache_timeout = None
+    mock_datasource.changed_on = None
+
+    # Main query with a contribution op that has NO 'options' key
+    main_query = QueryObject(
+        datasource=mock_datasource,
+        columns=["brokerage"],
+        metrics=["Amount In"],
+        post_processing=[{"operation": "contribution"}],
+    )
+
+    # Totals query (no columns, has metrics, no post-processing)
+    totals_query = QueryObject(
+        datasource=mock_datasource,
+        columns=[],
+        metrics=["Amount In"],
+        post_processing=[],
+    )
+
+    mock_query_context = MagicMock()
+    mock_query_context.queries = [main_query, totals_query]
+
+    mock_query_result = MagicMock()
+    mock_query_result.df = pd.DataFrame({"Amount In": [42.0]})
+
+    processor = QueryContextProcessor(mock_query_context)
+    processor._qc_datasource = mock_datasource
+
+    with patch.object(
+        mock_query_context, "get_query_result", return_value=mock_query_result
+    ):
+        # Should not raise KeyError
+        processor.ensure_totals_available()
+
+    options = main_query.post_processing[0]["options"]
+    assert options["contribution_totals"] == {"Amount In": 42.0}
+
+
 def test_get_df_payload_validates_before_cache_key_generation():
     """
     Test that get_df_payload calls validate() before generating cache key.
