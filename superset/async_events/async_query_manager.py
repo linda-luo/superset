@@ -291,6 +291,7 @@ class AsyncQueryManager:
     ) -> dict[str, Any]:
         # pylint: disable=import-outside-toplevel
         from superset import security_manager
+        from superset.tasks.async_queries import get_query_timeout
 
         job_metadata = self.init_job(channel_id, user_id)
         self._load_explore_json_into_cache_job.apply_async(
@@ -303,6 +304,7 @@ class AsyncQueryManager:
                 force,
             ],
             expires=self._jwt_expiration_seconds,
+            soft_time_limit=get_query_timeout(),
         )
         return job_metadata
 
@@ -314,6 +316,7 @@ class AsyncQueryManager:
     ) -> dict[str, Any]:
         # pylint: disable=import-outside-toplevel
         from superset import security_manager
+        from superset.tasks.async_queries import get_query_timeout
 
         # if it's guest user, we want to pass the guest token to the celery task
         # chart data cache key is calculated based on the current user
@@ -328,6 +331,7 @@ class AsyncQueryManager:
                 form_data,
             ],
             expires=self._jwt_expiration_seconds,
+            soft_time_limit=get_query_timeout(),
         )
         return job_metadata
 

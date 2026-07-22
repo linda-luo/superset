@@ -373,3 +373,24 @@ def test_load_explore_json_into_cache_falls_back_to_string_for_generic_exception
 
     errors = mock_async_query_manager.update_job.call_args[1]["errors"]
     assert errors == ["boom"]
+
+
+def test_get_query_timeout_resolves_lazily_from_config():
+    """
+    The soft time limit must be resolved lazily from ``current_app.config`` so
+    that importing the module does not require an application context and the
+    value always reflects the active configuration.
+    """
+    from flask import current_app
+
+    from superset.tasks import async_queries
+
+    # The timeout must not be snapshotted at import time.
+    assert not hasattr(async_queries, "query_timeout")
+
+    original = current_app.config["SQLLAB_ASYNC_TIME_LIMIT_SEC"]
+    try:
+        current_app.config["SQLLAB_ASYNC_TIME_LIMIT_SEC"] = 1234
+        assert async_queries.get_query_timeout() == 1234
+    finally:
+        current_app.config["SQLLAB_ASYNC_TIME_LIMIT_SEC"] = original
