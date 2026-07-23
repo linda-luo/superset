@@ -24,6 +24,7 @@ from pydantic import ValidationError
 
 from superset.mcp_service.chart.schemas import (
     BigNumberChartConfig,
+    ChartData,
     ColumnRef,
     FilterConfig,
     GenerateChartRequest,
@@ -1204,3 +1205,46 @@ class TestRequestSchemaAliasChoices:
     def test_list_charts_select_columns_columns_alias(self) -> None:
         req = ListChartsRequest.model_validate({"columns": ["id", "slice_name"]})
         assert req.select_columns == ["id", "slice_name"]
+
+
+class TestChartDataTotalRows:
+    """Test ChartData.total_rows coercion."""
+
+    @staticmethod
+    def _base_kwargs() -> dict[str, object]:
+        return {
+            "chart_id": 1,
+            "chart_name": "Chart 1",
+            "chart_type": "table",
+            "columns": [],
+            "data": [],
+            "row_count": 0,
+            "data_freshness": None,
+            "summary": "summary",
+            "insights": [],
+            "data_quality": {},
+            "recommended_visualizations": [],
+            "performance": {
+                "query_duration_ms": 0,
+                "cache_status": "miss",
+            },
+        }
+
+    def test_total_rows_float_coerced_to_int(self) -> None:
+        chart_data = ChartData(total_rows=42.0, **self._base_kwargs())
+        assert chart_data.total_rows == 42
+        assert isinstance(chart_data.total_rows, int)
+        # Serialization must not raise PydanticSerializationError.
+        assert chart_data.model_dump()["total_rows"] == 42
+
+    def test_total_rows_none_preserved(self) -> None:
+        chart_data = ChartData(total_rows=None, **self._base_kwargs())
+        assert chart_data.total_rows is None
+
+    def test_total_rows_int_preserved(self) -> None:
+        chart_data = ChartData(total_rows=7, **self._base_kwargs())
+        assert chart_data.total_rows == 7
+
+    def test_total_rows_invalid_falls_back_to_none(self) -> None:
+        chart_data = ChartData(total_rows="not-a-number", **self._base_kwargs())
+        assert chart_data.total_rows is None
