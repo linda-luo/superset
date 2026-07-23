@@ -95,19 +95,19 @@ def test_bootstrap_oauth_providers(app_context: None) -> None:
 
 @pytest.mark.parametrize(
     "auth_type",
-    [AUTH_OAUTH, AUTH_SAML],
+    [AUTH_LDAP, AUTH_OAUTH, AUTH_SAML],
 )
 def test_recaptcha_not_shown_for_federated_auth(
     app_context: None,
     auth_type: int,
 ) -> None:
-    """Recaptcha should not be shown for OAuth or SAML auth types."""
+    """Recaptcha should not be shown for LDAP, OAuth or SAML auth types (#36857)."""
     from flask import current_app
 
     current_app.config["AUTH_TYPE"] = auth_type
     current_app.config["AUTH_USER_REGISTRATION"] = True
     current_app.config["AUTH_USER_REGISTRATION_ROLE"] = "Public"
-    current_app.config.pop("RECAPTCHA_PUBLIC_KEY", None)
+    current_app.config["RECAPTCHA_PUBLIC_KEY"] = "test-key"
 
     payload = _get_bootstrap()
 
@@ -116,13 +116,13 @@ def test_recaptcha_not_shown_for_federated_auth(
 
 @pytest.mark.parametrize(
     "auth_type",
-    [AUTH_DB, AUTH_LDAP],
+    [AUTH_DB],
 )
 def test_recaptcha_shown_for_non_federated_auth(
     app_context: None,
     auth_type: int,
 ) -> None:
-    """Recaptcha should be shown for DB and LDAP auth types when registration is on."""
+    """Recaptcha should be shown for DB auth when registration is on."""
     from flask import current_app
 
     current_app.config["AUTH_TYPE"] = auth_type
