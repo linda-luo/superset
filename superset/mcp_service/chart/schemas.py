@@ -2645,6 +2645,23 @@ class ChartData(BaseModel):
     schema_version: str = Field("2.0", description="Response schema version")
     api_version: str = Field("v1", description="MCP API version")
 
+    @field_validator("total_rows", mode="before")
+    @classmethod
+    def _coerce_total_rows(cls, v: Any) -> int | None:
+        """Coerce ``total_rows`` to an int.
+
+        Some engines/drivers report ``rowcount`` as a float (or numpy float),
+        which would raise a ``PydanticSerializationError`` against the strict
+        ``int`` field. Cast to ``int`` and fall back to ``None`` when the value
+        cannot be interpreted as a number.
+        """
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
 
 class GetChartPreviewRequest(QueryCacheControl):
     """Request for chart preview with cache control.
