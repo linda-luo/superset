@@ -177,7 +177,19 @@ class QueryCacheManager:
         if not key or not _cache[region] or force_query:
             return query_cache
 
-        if cache_value := _cache[region].get(key):
+        try:
+            cache_value = _cache[region].get(key)
+        except Exception as ex:  # pylint: disable=broad-except
+            # Fail open on cache backend errors (e.g. Redis connection/timeout
+            # errors) by treating them as a cache miss and falling through to
+            # the live-query path instead of propagating a 500.
+            logger.warning(
+                "Error reading from cache backend: %s",
+                error_msg_from_exception(ex),
+            )
+            cache_value = None
+
+        if cache_value:
             logger.debug("Cache key: %s", key)
             # Log cache hit for debugging
             logger.debug("CACHE GET - Key: %s, Region: %s", key, region)
