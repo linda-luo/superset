@@ -1275,6 +1275,24 @@ class BaseEngineSpec:  # pylint: disable=too-many-public-methods
         )
 
     @classmethod
+    def get_column_description_retry_sql(cls, sql: str) -> str | None:
+        """
+        Return an alternative statement for probing column types when the initial
+        zero-row probe yields no column metadata, or ``None`` when no retry is
+        supported (the default).
+
+        Some drivers (e.g. clickhouse-connect) only backfill ``cursor.description``
+        for a zero-row result when the statement text begins with ``SELECT``/``WITH``.
+        Leading comments (such as those injected by ``SQL_QUERY_MUTATOR``) defeat
+        that check, so engines can override this to wrap the SQL in a comment-safe
+        outer query.
+
+        :param sql: The SQL that produced an empty column description
+        :return: A retry SQL statement, or ``None`` if unsupported
+        """
+        return None
+
+    @classmethod
     def expand_data(
         cls, columns: list[ResultSetColumnType], data: list[dict[Any, Any]]
     ) -> tuple[

@@ -542,6 +542,98 @@ def test_fetch_metadata_with_comment_field_existing_columns(
     assert columns_by_name["name"].description == "Updated name description"
 
 
+def test_fetch_metadata_expands_row_expression_new_columns(
+    mocker: MockerFixture,
+) -> None:
+    """Test that fetch_metadata persists the `expression` of expanded ROW
+    columns for new physical columns (Trino nested ROW fields)
+    """
+    database = mocker.MagicMock()
+    database.get_metrics.return_value = []
+
+    mock_db_engine_spec = mocker.MagicMock()
+    mock_db_engine_spec.alter_new_orm_column = mocker.MagicMock()
+    database.db_engine_spec = mock_db_engine_spec
+
+    table = SqlaTable(
+        table_name="test_table_expand",
+        database=database,
+    )
+
+    mock_columns = [
+        {"column_name": "field1", "type": "VARCHAR"},
+        {
+            "column_name": "field1.a",
+            "type": "VARCHAR",
+            "expression": '"field1"."a"',
+        },
+    ]
+
+    mocker.patch.object(table, "external_metadata", return_value=mock_columns)
+    mocker.patch("superset.connectors.sqla.models.db.session")
+    mocker.patch(
+        "superset.connectors.sqla.models.config", {"SQLA_TABLE_MUTATOR": lambda x: None}
+    )
+
+    table.fetch_metadata()
+
+    columns_by_name = {col.column_name: col for col in table.columns}
+    # Regular physical column has no expression
+    assert columns_by_name["field1"].expression == ""
+    # Expanded ROW field carries the per-segment quoted expression
+    assert columns_by_name["field1.a"].expression == '"field1"."a"'
+
+
+def test_fetch_metadata_expands_row_expression_existing_columns(
+    mocker: MockerFixture,
+) -> None:
+    """Test that fetch_metadata persists the `expression` of expanded ROW
+    columns for existing physical columns (Trino nested ROW fields)
+    """
+    database = mocker.MagicMock()
+    database.get_metrics.return_value = []
+
+    mock_db_engine_spec = mocker.MagicMock()
+    mock_db_engine_spec.alter_new_orm_column = mocker.MagicMock()
+    database.db_engine_spec = mock_db_engine_spec
+
+    table = SqlaTable(
+        table_name="test_table_expand_existing",
+        database=database,
+    )
+    table.id = 1
+
+    existing_col = TableColumn(
+        column_name="field1.a",
+        type="VARCHAR",
+        table=table,
+        expression="",
+    )
+    table.columns = [existing_col]
+
+    mock_columns = [
+        {
+            "column_name": "field1.a",
+            "type": "VARCHAR",
+            "expression": '"field1"."a"',
+        },
+    ]
+
+    mock_session = mocker.patch("superset.connectors.sqla.models.db.session")
+    mock_session.query.return_value.filter.return_value.all.return_value = [
+        existing_col,
+    ]
+    mocker.patch.object(table, "external_metadata", return_value=mock_columns)
+    mocker.patch(
+        "superset.connectors.sqla.models.config", {"SQLA_TABLE_MUTATOR": lambda x: None}
+    )
+
+    table.fetch_metadata()
+
+    columns_by_name = {col.column_name: col for col in table.columns}
+    assert columns_by_name["field1.a"].expression == '"field1"."a"'
+
+
 def test_fetch_metadata_mixed_comment_scenarios(mocker: MockerFixture) -> None:
     """Test fetch_metadata with mix of new/existing columns and with/without
     comments

@@ -420,6 +420,14 @@ class ClickHouseConnectEngineSpec(BasicParametersMixin, ClickHouseEngineSpec):
         return type_code
 
     @classmethod
+    def get_column_description_retry_sql(cls, sql: str) -> str | None:
+        # clickhouse-connect only backfills cursor.description for a zero-row
+        # result when the statement starts with SELECT/WITH. Leading comments
+        # (e.g. from SQL_QUERY_MUTATOR) defeat that check, so wrap the statement
+        # in a bare outer SELECT to guarantee column metadata is returned.
+        return f"SELECT * FROM (\n{sql}\n) AS _superset_col_probe LIMIT 0"  # noqa: S608
+
+    @classmethod
     def build_sqlalchemy_uri(
         cls,
         parameters: BasicParametersType,

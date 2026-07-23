@@ -2158,6 +2158,248 @@ def test_adhoc_metric_to_sqla_invalid_sql_expression_raises_validation_error(
         table.adhoc_metric_to_sqla(metric, {})
 
 
+def test_get_sqla_query_raises_for_nonaggregate_custom_sql_metric_with_columns(
+    database: Database,
+) -> None:
+    """
+    A grouped query (e.g. a Deck.gl Screen Grid's spatial ``columns``) with a
+    non-aggregate Custom SQL metric must raise a clear validation error
+    instead of letting an invalid ``GROUP BY`` reach the database (#38913).
+    """
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+    from superset.exceptions import QueryObjectValidationError
+
+    table = SqlaTable(
+        database=database,
+        schema=None,
+        table_name="t",
+        columns=[
+            TableColumn(column_name="lon"),
+            TableColumn(column_name="lat"),
+            TableColumn(column_name="confirmed"),
+            TableColumn(column_name="predicted"),
+        ],
+    )
+    metric: AdhocMetric = {
+        "expressionType": "SQL",
+        "sqlExpression": "GREATEST(confirmed, predicted)",
+        "label": "weight",
+    }
+
+    with pytest.raises(QueryObjectValidationError, match="not an aggregate"):
+        table.get_sqla_query(
+            columns=["lon", "lat"],
+            metrics=[metric],
+            extras={},
+            filter=[],
+            granularity=None,
+            is_timeseries=False,
+        )
+
+
+def test_get_sqla_query_allows_aggregate_wrapped_custom_sql_metric_with_columns(
+    database: Database,
+) -> None:
+    """
+    Wrapping the Custom SQL metric in an aggregate (the fix's guidance) must
+    let the grouped query build normally.
+    """
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+
+    table = SqlaTable(
+        database=database,
+        schema=None,
+        table_name="t",
+        columns=[
+            TableColumn(column_name="lon"),
+            TableColumn(column_name="lat"),
+            TableColumn(column_name="confirmed"),
+            TableColumn(column_name="predicted"),
+        ],
+    )
+    metric: AdhocMetric = {
+        "expressionType": "SQL",
+        "sqlExpression": "MAX(GREATEST(confirmed, predicted))",
+        "label": "weight",
+    }
+
+    result = table.get_sqla_query(
+        columns=["lon", "lat"],
+        metrics=[metric],
+        extras={},
+        filter=[],
+        granularity=None,
+        is_timeseries=False,
+    )
+    assert result is not None
+
+
+def test_get_sqla_query_allows_nonaggregate_custom_sql_metric_without_dimensions(
+    database: Database,
+) -> None:
+    """
+    A dimensionless query (e.g. Big Number) built from a non-aggregate Custom
+    SQL metric alone is valid SQL and must not be blocked: there is no
+    ``GROUP BY`` for the expression to conflict with.
+    """
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+
+    table = SqlaTable(
+        database=database,
+        schema=None,
+        table_name="t",
+        columns=[
+            TableColumn(column_name="confirmed"),
+            TableColumn(column_name="predicted"),
+        ],
+    )
+    metric: AdhocMetric = {
+        "expressionType": "SQL",
+        "sqlExpression": "GREATEST(confirmed, predicted)",
+        "label": "weight",
+    }
+
+    result = table.get_sqla_query(
+        metrics=[metric],
+        extras={},
+        filter=[],
+        granularity=None,
+        is_timeseries=False,
+    )
+    assert result is not None
+
+
+def test_get_sqla_query_raises_for_nonaggregate_custom_sql_metric_with_groupby(
+    database: Database,
+) -> None:
+    """
+    A ``groupby``-driven grouped query (e.g. a Deck.gl Screen Grid, which sends
+    its spatial dimensions via ``query_obj["groupby"]`` -- see
+    ``BaseDeckGLViz.query_obj`` in ``superset/viz.py``) with a non-aggregate
+    Custom SQL metric must raise the same clear validation error as the
+    ``columns``-driven case (#38913).
+    """
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+    from superset.exceptions import QueryObjectValidationError
+
+    table = SqlaTable(
+        database=database,
+        schema=None,
+        table_name="t",
+        columns=[
+            TableColumn(column_name="longitude"),
+            TableColumn(column_name="latitude"),
+            TableColumn(column_name="confirmed"),
+            TableColumn(column_name="predicted"),
+        ],
+    )
+    metric: AdhocMetric = {
+        "expressionType": "SQL",
+        "sqlExpression": "GREATEST(confirmed, predicted)",
+        "label": "weight",
+    }
+
+    with pytest.raises(QueryObjectValidationError, match="not an aggregate"):
+        table.get_sqla_query(
+            groupby=["longitude", "latitude"],
+            metrics=[metric],
+            extras={},
+            filter=[],
+            granularity=None,
+            is_timeseries=False,
+        )
+
+
+def test_get_sqla_query_raises_for_nonaggregate_custom_sql_metric_with_timeseries(
+    database: Database,
+) -> None:
+    """
+    A timeseries query's time bucket (from ``granularity``/``is_timeseries``)
+    also produces a ``GROUP BY``, even with no ``columns``/``groupby``
+    dimensions. A non-aggregate Custom SQL metric must be rejected here too
+    (#38913).
+    """
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+    from superset.exceptions import QueryObjectValidationError
+
+    table = SqlaTable(
+        database=database,
+        schema=None,
+        table_name="t",
+        columns=[
+            TableColumn(column_name="ts", type="TIMESTAMP", is_dttm=True),
+            TableColumn(column_name="confirmed"),
+            TableColumn(column_name="predicted"),
+        ],
+    )
+    metric: AdhocMetric = {
+        "expressionType": "SQL",
+        "sqlExpression": "GREATEST(confirmed, predicted)",
+        "label": "weight",
+    }
+
+    with pytest.raises(QueryObjectValidationError, match="not an aggregate"):
+        table.get_sqla_query(
+            columns=[],
+            metrics=[metric],
+            extras={"time_grain_sqla": "P1D"},
+            filter=[],
+            granularity="ts",
+            is_timeseries=True,
+        )
+
+
+def test_get_sqla_query_allows_jinja_templated_custom_sql_metric_with_columns(
+    database: Database,
+) -> None:
+    """
+    A Jinja-templated Custom SQL metric may render to an aggregate at runtime
+    and can't be judged statically, so the guard must skip it and let the
+    grouped query build normally (#38913).
+    """
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+
+    table = SqlaTable(
+        database=database,
+        schema=None,
+        table_name="t",
+        columns=[
+            TableColumn(column_name="lon"),
+            TableColumn(column_name="lat"),
+            TableColumn(column_name="confirmed"),
+            TableColumn(column_name="predicted"),
+        ],
+    )
+    metric: AdhocMetric = {
+        "expressionType": "SQL",
+        "sqlExpression": "{{ 'SUM(confirmed)' }}",
+        "label": "weight",
+    }
+
+    result = table.get_sqla_query(
+        columns=["lon", "lat"],
+        metrics=[metric],
+        extras={},
+        filter=[],
+        granularity=None,
+        is_timeseries=False,
+    )
+    assert result is not None
+
+    # Confirm the Jinja templating actually rendered to an aggregate (as
+    # opposed to the guard's skip merely letting raw, unrendered Jinja
+    # through unchecked).
+    with database.get_sqla_engine() as engine:
+        sql = str(
+            result.sqla_query.compile(
+                dialect=engine.dialect,
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+    assert "SUM(confirmed)" in sql
+    assert "{{" not in sql
+
+
 def test_extras_where_is_parenthesized(
     database: Database,
 ) -> None:
@@ -3953,3 +4195,54 @@ def test_like_filter_on_string_column_does_not_cast(database: Database) -> None:
     assert not any(isinstance(node, Cast) for node in iterate(whereclause)), (
         f"Unexpected Cast node in the filter expression: {whereclause}"
     )
+
+
+def test_get_sqla_query_calculated_column_inlined_in_raw_records(
+    database: Database,
+) -> None:
+    """Regression test for #34784: a calculated column selected as an adhoc
+    column in a raw-records query (no groupby/metrics) must have its stored
+    SQL expression inlined, not emitted as a bare column reference."""
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+    from superset.models.helpers import SqlaQuery
+
+    table: SqlaTable = SqlaTable(
+        database=database,
+        schema=None,
+        table_name="t",
+        columns=[
+            TableColumn(column_name="a", type="INTEGER"),
+            TableColumn(column_name="b", type="TEXT"),
+            TableColumn(
+                column_name="name_test",
+                type="TEXT",
+                expression="CASE WHEN a > 0 THEN 'positive' ELSE 'non-positive' END",
+            ),
+        ],
+    )
+
+    # No metrics/groupby => the ``elif columns:`` branch runs.
+    adhoc_col: AdhocColumn = {
+        "sqlExpression": "name_test",
+        "label": "name_test",
+        "isColumnReference": True,
+    }
+    sqlaq: SqlaQuery = table.get_sqla_query(
+        columns=[adhoc_col],
+        is_timeseries=False,
+        row_limit=10,
+    )
+
+    with database.get_sqla_engine() as engine:
+        sql: str = str(
+            sqlaq.sqla_query.compile(
+                dialect=engine.dialect,
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+
+    # The stored expression must be inlined rather than emitted as a bare
+    # ``name_test`` reference.
+    assert "CASE WHEN a > 0" in sql
+    assert "'positive'" in sql
+    assert "'non-positive'" in sql

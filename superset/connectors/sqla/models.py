@@ -2019,6 +2019,7 @@ class SqlaTable(
                     type=col["type"],
                     table=self,
                 )
+                new_column.expression = col.get("expression") or ""
                 new_column.is_dttm = new_column.is_temporal
                 # Set description from comment field if available
                 if col.get("comment"):
@@ -2029,7 +2030,7 @@ class SqlaTable(
                 if new_column.type != col["type"]:
                     results.modified.append(col["column_name"])
                 new_column.type = col["type"]
-                new_column.expression = ""
+                new_column.expression = col.get("expression") or ""
                 # Set description from comment field if available
                 if col.get("comment"):
                     new_column.description = col["comment"]
