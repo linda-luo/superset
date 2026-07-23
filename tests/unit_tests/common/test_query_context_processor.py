@@ -2204,3 +2204,63 @@ def test_raise_for_access_evaluates_access_before_validate():
             processor.raise_for_access()
 
     query.validate.assert_not_called()
+
+
+def test_get_native_annotation_data_missing_layer_raises_validation_error() -> None:
+    """
+    A stale reference to a deleted NATIVE annotation layer should raise a
+    QueryObjectValidationError naming the missing layer instead of a KeyError.
+    """
+    from superset.exceptions import QueryObjectValidationError
+
+    query_obj = MagicMock()
+    query_obj.annotation_layers = [
+        {"sourceType": "NATIVE", "value": 123, "name": "Deleted layer"},
+    ]
+
+    with patch(
+        "superset.common.query_context_processor.AnnotationLayerDAO.find_by_ids",
+        return_value=[],
+    ):
+        with pytest.raises(QueryObjectValidationError) as excinfo:
+            QueryContextProcessor.get_native_annotation_data(query_obj)
+
+    assert "123" in str(excinfo.value)
+    assert "Deleted layer" in str(excinfo.value)
+
+
+def test_get_native_annotation_data_returns_records_for_existing_layer() -> None:
+    """
+    An existing NATIVE annotation layer should be resolved into its records.
+    """
+    query_obj = MagicMock()
+    query_obj.annotation_layers = [
+        {"sourceType": "NATIVE", "value": 7, "name": "My layer"},
+    ]
+
+    annotation = MagicMock()
+    annotation.start_dttm = "2024-01-01"
+    annotation.end_dttm = "2024-01-02"
+    annotation.short_descr = "short"
+    annotation.long_descr = "long"
+    annotation.json_metadata = "{}"
+
+    layer_object = MagicMock()
+    layer_object.id = 7
+    layer_object.annotation = [annotation]
+
+    with patch(
+        "superset.common.query_context_processor.AnnotationLayerDAO.find_by_ids",
+        return_value=[layer_object],
+    ):
+        result = QueryContextProcessor.get_native_annotation_data(query_obj)
+
+    assert result["My layer"]["records"] == [
+        {
+            "start_dttm": "2024-01-01",
+            "end_dttm": "2024-01-02",
+            "short_descr": "short",
+            "long_descr": "long",
+            "json_metadata": "{}",
+        }
+    ]

@@ -461,7 +461,15 @@ class QueryContextProcessor:
                 "long_descr",
                 "json_metadata",
             ]
-            layer_object = layer_objects[layer_id]
+            if not (layer_object := layer_objects.get(layer_id)):
+                raise QueryObjectValidationError(
+                    _(
+                        f"""Annotation layer with ID {layer_id} (referenced by
+                        annotation layer '{layer_name}') was not found. Please
+                        verify that the annotation layer exists and is
+                        accessible."""
+                    )
+                )
             records = [
                 {column: getattr(annotation, column) for column in columns}
                 for annotation in layer_object.annotation
