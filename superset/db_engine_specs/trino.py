@@ -625,6 +625,7 @@ class TrinoEngineSpec(PrestoBaseEngineSpec):
                 column_name=name,
                 type=inner_type,
                 is_dttm=is_dttm,
+                expression=query_name,
                 query_as=f'{query_name} AS "{name}"',
             )
             cols.extend(cls._expand_columns(inner_col))

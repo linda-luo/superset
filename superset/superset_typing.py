@@ -130,6 +130,7 @@ class ResultSetColumnType(TypedDict):
     scale: NotRequired[Any]
     max_length: NotRequired[Any]
 
+    expression: NotRequired[Any]
     query_as: NotRequired[Any]
 
 
