@@ -270,6 +270,7 @@ def test_submit_chart_data_job_as_guest_user(
             {},
         ],
         expires=3600,
+        soft_time_limit=21600,
     )
 
     assert "guest_token" not in job_meta
@@ -406,6 +407,7 @@ def test_submit_explore_json_job_as_guest_user(
             False,
         ],
         expires=3600,
+        soft_time_limit=21600,
     )
 
     assert "guest_token" not in job_meta
