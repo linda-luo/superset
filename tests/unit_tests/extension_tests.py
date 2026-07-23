@@ -14,8 +14,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+import logging
 from os.path import dirname, join
-from unittest.mock import Mock
+from unittest.mock import Mock, mock_open, patch
 
 from superset.extensions import UIManifestProcessor
 
@@ -50,6 +51,30 @@ def test_get_manifest_no_prefix():
     assert manifest["js_manifest"]("styles") == ["/static/dist/styles-js.js"]
     assert manifest["css_manifest"]("styles") == []
     assert manifest["assets_prefix"] == ""
+
+
+def test_parse_manifest_json_missing_file_logs_warning(caplog):
+    """A missing manifest should warn (not fail silently) with an empty manifest."""
+    manifest_processor = UIManifestProcessor("/nonexistent")
+    with caplog.at_level(logging.WARNING, logger="superset.extensions"):
+        manifest_processor.parse_manifest_json()
+    assert manifest_processor.manifest == {}
+    assert any("manifest not found" in record.getMessage() for record in caplog.records)
+
+
+def test_parse_manifest_json_invalid_json_logs_exception(caplog):
+    """A malformed manifest should be logged instead of swallowed silently."""
+    manifest_processor = UIManifestProcessor(APP_DIR)
+    with (
+        patch("superset.extensions.open", mock_open(read_data="{not valid json")),
+        caplog.at_level(logging.ERROR, logger="superset.extensions"),
+    ):
+        manifest_processor.parse_manifest_json()
+    assert manifest_processor.manifest == {}
+    assert any(
+        "Failed to parse frontend asset manifest" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 def test_spa_template_includes_css_bundles():
