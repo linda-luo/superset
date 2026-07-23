@@ -253,3 +253,29 @@ def test_adjust_engine_params_fully_qualified(
 
     uri = spec.adjust_engine_params(url, {}, None, schema)[0]
     assert str(uri) == expected_result
+
+
+def test_connect_get_column_description_retry_sql() -> None:
+    """
+    ClickHouseConnect wraps a mutated probe (which may start with a comment
+    from SQL_QUERY_MUTATOR) in a bare outer SELECT so clickhouse-connect
+    backfills cursor.description for the zero-row result.
+    """
+    from superset.db_engine_specs.clickhouse import (
+        ClickHouseConnectEngineSpec as spec,  # noqa: N813
+    )
+
+    mutated = "-- attribution: dashboard=1\nSELECT a + 1 AS calc FROM t LIMIT 0"
+    retry_sql = spec.get_column_description_retry_sql(mutated)
+
+    assert retry_sql is not None
+    assert retry_sql.lstrip().upper().startswith("SELECT")
+    assert mutated in retry_sql
+    assert "LIMIT 0" in retry_sql
+
+
+def test_base_get_column_description_retry_sql_returns_none() -> None:
+    """The base engine spec opts out of retrying by default."""
+    from superset.db_engine_specs.base import BaseEngineSpec
+
+    assert BaseEngineSpec.get_column_description_retry_sql("SELECT 1") is None

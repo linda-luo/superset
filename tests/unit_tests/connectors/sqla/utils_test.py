@@ -145,6 +145,69 @@ def test_get_columns_description_zero_row_query(tmp_path: Path) -> None:
     assert all(col["name"] for col in columns)
 
 
+def test_get_columns_description_retries_when_empty(mocker: MockerFixture) -> None:
+    """
+    When the first zero-row probe returns no columns (e.g. clickhouse-connect
+    fails to backfill ``cursor.description`` because ``SQL_QUERY_MUTATOR``
+    prepended a comment), ``get_columns_description`` must retry once with the
+    engine-provided comment-safe SQL before giving up.
+
+    Regression test for incident #14 (upstream apache/superset#42298).
+    """
+    database = mocker.MagicMock()
+    cursor = mocker.MagicMock()
+    db_engine_spec = mocker.MagicMock()
+
+    database.get_raw_connection.return_value.__enter__.return_value.cursor.return_value = cursor  # noqa: E501
+    database.db_engine_spec = db_engine_spec
+    database.apply_limit_to_sql.return_value = "SELECT 1 AS a LIMIT 0"
+    mutated = "-- attribution\nSELECT 1 AS a LIMIT 0"
+    database.mutate_sql_based_on_config.return_value = mutated
+    retry_sql = "SELECT * FROM (\n-- attribution\nSELECT 1 AS a LIMIT 0\n) LIMIT 0"
+    db_engine_spec.get_column_description_retry_sql.return_value = retry_sql
+
+    expected = [{"column_name": "a", "name": "a", "type": "INTEGER"}]
+    empty_rs = mocker.MagicMock(columns=[])
+    populated_rs = mocker.MagicMock(columns=expected)
+    mocker.patch(
+        "superset.connectors.sqla.utils.SupersetResultSet",
+        side_effect=[empty_rs, populated_rs],
+    )
+
+    columns = get_columns_description(database, None, None, "SELECT 1 AS a")
+
+    assert columns == expected
+    db_engine_spec.get_column_description_retry_sql.assert_called_once_with(mutated)
+    db_engine_spec.execute.assert_any_call(cursor, retry_sql, database)
+
+
+def test_get_columns_description_no_retry_when_columns_present(
+    mocker: MockerFixture,
+) -> None:
+    """
+    When the first probe already yields columns, no retry SQL is requested.
+    """
+    database = mocker.MagicMock()
+    cursor = mocker.MagicMock()
+    db_engine_spec = mocker.MagicMock()
+
+    database.get_raw_connection.return_value.__enter__.return_value.cursor.return_value = cursor  # noqa: E501
+    database.db_engine_spec = db_engine_spec
+    database.apply_limit_to_sql.return_value = "SELECT 1 AS a LIMIT 0"
+    database.mutate_sql_based_on_config.return_value = "SELECT 1 AS a LIMIT 0"
+
+    expected = [{"column_name": "a", "name": "a", "type": "INTEGER"}]
+    mocker.patch(
+        "superset.connectors.sqla.utils.SupersetResultSet",
+        return_value=mocker.MagicMock(columns=expected),
+    )
+
+    columns = get_columns_description(database, None, None, "SELECT 1 AS a")
+
+    assert columns == expected
+    db_engine_spec.get_column_description_retry_sql.assert_not_called()
+
+
 def test_get_virtual_table_metadata_zero_row_query(
     mocker: MockerFixture, tmp_path: Path
 ) -> None:
