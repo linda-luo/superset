@@ -161,7 +161,19 @@ def get_columns_description(
             db_engine_spec.execute(cursor, mutated_query, database)
             result = db_engine_spec.fetch_data(cursor, limit=limit)
             result_set = SupersetResultSet(result, cursor.description, db_engine_spec)
-            return result_set.columns
+            columns = result_set.columns
+            if not columns and (
+                retry_sql := db_engine_spec.get_column_description_retry_sql(
+                    mutated_query
+                )
+            ):
+                db_engine_spec.execute(cursor, retry_sql, database)
+                result = db_engine_spec.fetch_data(cursor, limit=limit)
+                result_set = SupersetResultSet(
+                    result, cursor.description, db_engine_spec
+                )
+                columns = result_set.columns
+            return columns
     except Exception as ex:
         raise SupersetGenericDBErrorException(message=str(ex)) from ex
 
